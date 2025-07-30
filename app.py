@@ -235,11 +235,11 @@ if page == '📚 Book Recommender':
         works_filtered = st.session_state.works_filtered
         # st.dataframe(works_filtered)
         
-        st.write('Finally, describe to us what you are looking for!')
+        st.write('Finally, tell us more about what you are most interested in!')
         
         text_input = st.text_input(
             'User input',
-            placeholder="(Optional) Tell us briefly what would best describe what you're interested in (e.g. a heroic epic).",
+            placeholder="(Optional) Tell us briefly about what you want to read most (e.g. a heroic epic).",
             max_chars=100,
             label_visibility='collapsed'
         )
