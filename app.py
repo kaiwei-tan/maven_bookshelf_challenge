@@ -5,11 +5,12 @@ import datetime
 import plotly.graph_objects as go
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+import pickle
 
 st.set_page_config(layout='wide', page_title='Maven Bookshelf Challenge', page_icon='📚')
 
 # Load data
-@st.cache_data
+@st.cache_data(show_spinner='⏳ Filling bookshelves...')
 def load_data():
     # Goodreads works dataset
     works = pd.read_csv("goodreads_works.csv")
@@ -41,6 +42,7 @@ def recommend_books(works_filtered, vectorizer, book_vectors, user_input:str, n_
         
     return recommendations
 
+@st.cache_data(show_spinner='⏳ Flipping pages...')
 def get_recommendation_detail(works, work_id:int):
         recommendation_data = works[works['work_id'] == work_id].to_dict('records')[0]
 
@@ -60,6 +62,7 @@ def get_recommendation_detail(works, work_id:int):
         
         return recommendation_detail
 
+@st.cache_data(show_spinner='⏳ Flipping pages...')
 def get_reading_list_detail(works, work_id:int):
         reading_list_data = works[works['work_id'] == work_id].to_dict('records')[0]
 
@@ -84,7 +87,6 @@ def get_reading_list_detail(works, work_id:int):
         
         return reading_list_detail
 
-
 # Session state initialization
 if 'reading_list' not in st.session_state:
     st.session_state.reading_list = []
@@ -99,8 +101,9 @@ if 'works_filtered' not in st.session_state:
     st.session_state.works_filtered = works.copy()
 
 if 'vectorizer' not in st.session_state: #or 'book_vectors' not in st.session_state:
-    st.session_state.vectorizer = TfidfVectorizer(stop_words='english')
-    st.session_state.vectorizer.fit(works['description'])
+    with st.spinner('⏳ Summoning bookworms...'):
+        st.session_state.vectorizer = TfidfVectorizer(stop_words='english')
+        st.session_state.vectorizer.fit(works['description'])
 
 if 'navigation_step' not in st.session_state:
     st.session_state.navigation_step = None
@@ -117,7 +120,7 @@ if page == '📚 Book Recommender':
             st.session_state.navigation_step = 'recommender_start'
             st.rerun()
     
-        st.write('... or choose a preset curated list!')
+        st.write('... or choose a curated list!')
 
         col1, col2 = st.columns(2)
 
@@ -141,7 +144,7 @@ if page == '📚 Book Recommender':
             if st.button('🏛️ All-time classics', help='Renowed works that left their cultural mark on the world.', use_container_width=True):
                 st.session_state.recommendations += [3462456, 992628, 2445338, 376514, 3237312]
                 st.session_state.navigation_step = 'show_recommendations'
-                st.rerun()
+                st.rerun()   
         
     elif st.session_state.navigation_step == 'recommender_start':
         works_filtered = st.session_state.works_filtered
@@ -230,7 +233,7 @@ if page == '📚 Book Recommender':
 
     elif st.session_state.navigation_step == 'text_input':
         works_filtered = st.session_state.works_filtered
-        st.dataframe(works_filtered)
+        # st.dataframe(works_filtered)
         
         st.write('Finally, describe to us what you are looking for!')
         
@@ -265,7 +268,6 @@ if page == '📚 Book Recommender':
         st.markdown('---')
         
         for recommendation in st.session_state.recommendations:
-            print(recommendation)
             col1, col2, col3 = st.columns([1, 6, 3])
             
             recommendation_detail = get_recommendation_detail(works, work_id=recommendation)
@@ -295,7 +297,7 @@ if page == '📚 Book Recommender':
                         st.session_state.reading_list.remove(recommendation)
                         st.rerun()
 
-            st.markdown(f"> {recommendation_detail['description']}")
+            # st.markdown(f"> {recommendation_detail['description']}")
             st.markdown('---')
         
         if st.button('🔁 Restart Book Recommender', use_container_width=True):
@@ -404,9 +406,9 @@ if page == '📖 My Reading List':
                             if isinstance(review['started_at'], str) and isinstance(review['read_at'], str):
                                 st.markdown(f"Started reading on *{pd.to_datetime(review['started_at']).strftime('%d %B %Y')}* and finished on *{pd.to_datetime(review['read_at']).strftime('%d %B %Y')}*")
                             elif isinstance(review['started_at'], str):
-                                st.markdown(f"Started reading on {pd.to_datetime(review['started_at']).strftime('%d %B %Y')}")
+                                st.markdown(f"Started reading on *{pd.to_datetime(review['started_at']).strftime('%d %B %Y')}*")
                             elif isinstance(review['read_at'], str):
-                                st.markdown(f"Finished reading on {pd.to_datetime(review['read_at']).strftime('%d %B %Y')}")
+                                st.markdown(f"Finished reading on *{pd.to_datetime(review['read_at']).strftime('%d %B %Y')}*")
 
                             st.markdown('---')
 
