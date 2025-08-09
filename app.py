@@ -1,11 +1,10 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import datetime
 import plotly.graph_objects as go
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-import pickle
+import time
 
 st.set_page_config(layout='wide', page_title='Maven Bookshelf Challenge', page_icon='📚')
 
@@ -19,7 +18,8 @@ def load_data():
     works['author'] = works['author'].fillna('')
 
     reviews = pd.read_csv("reviews_new.csv")
-    
+
+    time.sleep(1)
     return works, reviews
 
 works, reviews = load_data()
@@ -36,7 +36,6 @@ def recommend_books(works_filtered, vectorizer, book_vectors, user_input:str, n_
         if recommendation_data_temp['work_id'] not in recommendations:
             recommendations.append(recommendation_data_temp['work_id'])
 
-        print(len(recommendations))
         if len(recommendations) >= n_recs:
             break
         
@@ -91,14 +90,21 @@ def get_reading_list_detail(works, work_id:int):
 if 'reading_list' not in st.session_state:
     st.session_state.reading_list = []
 
-if 'preferences' not in st.session_state:
-    st.session_state.preferences = {}
-
 if 'recommendations' not in st.session_state:
     st.session_state.recommendations = []
 
 if 'works_filtered' not in st.session_state:
     st.session_state.works_filtered = works.copy()
+
+if 'selections' not in st.session_state:
+    st.session_state.selections = {
+        'age_group': None,
+        'genre': None,
+        'era': None
+    }
+
+if 'preferences' not in st.session_state:
+    st.session_state.preferences = []
 
 if 'vectorizer' not in st.session_state: #or 'book_vectors' not in st.session_state:
     with st.spinner('⏳ Summoning bookworms...'):
@@ -109,6 +115,8 @@ if 'navigation_step' not in st.session_state:
     st.session_state.navigation_step = None
 
 page = st.sidebar.radio('Select section', ['📚 Book Recommender', '📖 My Reading List'], label_visibility='collapsed')
+# st.write(st.session_state.selections)
+# st.write([len(value) for value in st.session_state.preferences])
 
 if page == '📚 Book Recommender':
     st.title('📚 Book Recommender')
@@ -116,7 +124,7 @@ if page == '📚 Book Recommender':
     if not st.session_state.navigation_step:
         st.write('Use our recommendation system to find books based on your preferences...')
         
-        if st.button("Let's go!", use_container_width=True):
+        if st.button("Let's go!", type='primary', use_container_width=True):
             st.session_state.navigation_step = 'recommender_start'
             st.rerun()
     
@@ -147,7 +155,7 @@ if page == '📚 Book Recommender':
                 st.rerun()   
         
     elif st.session_state.navigation_step == 'recommender_start':
-        works_filtered = st.session_state.works_filtered
+        works_filtered = works.copy()
         
         st.write('Which age group suits you?')
         
@@ -155,27 +163,40 @@ if page == '📚 Book Recommender':
 
         with col1:
             if st.button("👦👧 I'm a kid", use_container_width=True):
-                st.session_state.works_filtered = works_filtered[(works_filtered['genres'].str.contains('children')) & (~works_filtered['genres'].str.contains('graphic'))]
+                st.session_state.selections['age_group'] = 'children'
+                st.session_state.preferences.append(set(works_filtered[(works_filtered['genres'].str.contains('children')) & (~works_filtered['genres'].str.contains('graphic'))]['work_id'].unique()))
                 st.session_state.navigation_step = 'Q1_complete'
                 st.rerun()
 
             if st.button('👨👩 I want something more mature', use_container_width=True):
-                st.session_state.works_filtered = works_filtered[~works_filtered['genres'].str.contains('children')]
+                st.session_state.selections['age_group'] = 'adult'
+                st.session_state.preferences.append(set(works_filtered[~works_filtered['genres'].str.contains('children')]['work_id'].unique()))
                 st.session_state.navigation_step = 'Q1_complete'
                 st.rerun()
 
         with col2:
             if st.button("🌱 I prefer young adult stories", use_container_width=True):
-                st.session_state.works_filtered = works_filtered[works_filtered['genres'].str.contains('young-adult')]
+                st.session_state.selections['age_group'] = 'teen'
+                st.session_state.preferences.append(set(works_filtered[works_filtered['genres'].str.contains('young-adult')]['work_id'].unique()))
                 st.session_state.navigation_step = 'Q1_complete'
                 st.rerun()
 
             if st.button("❔ I'm okay with anything!", use_container_width=True):
+                st.session_state.preferences.append(set(works_filtered['work_id'].unique()))
                 st.session_state.navigation_step = 'Q1_complete'
                 st.rerun()
 
+        st.write('---')
+
+        if st.button('🔙 Go back', use_container_width=True):
+            st.session_state.navigation_step = None
+            del st.session_state.selections
+            del st.session_state.preferences
+            st.session_state.recommendations = []
+            st.rerun()
+
     elif st.session_state.navigation_step == 'Q1_complete':
-        works_filtered = st.session_state.works_filtered
+        works_filtered = works.copy()
 
         st.write('Do you prefer fiction or non-fiction?')
         
@@ -183,23 +204,54 @@ if page == '📚 Book Recommender':
 
         with col1:
             if st.button('🎭 Fiction', use_container_width=True):
-                st.session_state.works_filtered = works_filtered[~works_filtered['genres'].str.contains('non-fiction')]
-                st.session_state.navigation_step = 'Q2_complete'
+                st.session_state.selections['genre'] = 'fiction'
+                
+                if st.session_state.selections['age_group'] in ['children', 'teen']:
+                    st.session_state.preferences.append(set(works_filtered['work_id'].unique()))
+                    st.session_state.navigation_step = 'text_input'
+                
+                else:
+                    st.session_state.preferences.append(set(works_filtered[~works_filtered['genres'].str.contains('non-fiction')]['work_id'].unique()))
+                    st.session_state.navigation_step = 'Q2_complete'
+                
                 st.rerun()
 
         with col2:
             if st.button('📊 Non-fiction', use_container_width=True):
-                st.session_state.works_filtered = works_filtered[works_filtered['genres'].str.contains('non-fiction')]
-                st.session_state.navigation_step = 'Q2_complete'
+                st.session_state.selections['genre'] = 'non-fiction'
+
+                if st.session_state.selections['age_group'] in ['children', 'teen']:
+                    st.session_state.preferences.append(set(works_filtered['work_id'].unique()))
+                    st.session_state.navigation_step = 'text_input'
+
+                else:
+                    st.session_state.preferences.append(set(works_filtered[works_filtered['genres'].str.contains('non-fiction')]['work_id'].unique()))
+                    st.session_state.navigation_step = 'Q2_complete'
+                
                 st.rerun()
 
         with col3:
             if st.button("❔ I'm okay with either!", use_container_width=True):
-                st.session_state.navigation_step = 'Q2_complete'
+                if st.session_state.selections['age_group'] in ['children', 'teen']:
+                    st.session_state.preferences.append(set(works_filtered['work_id'].unique()))
+                    st.session_state.navigation_step = 'text_input'
+                
+                else:
+                    st.session_state.preferences.append(set(works_filtered['work_id'].unique()))
+                    st.session_state.navigation_step = 'Q2_complete'
+                
                 st.rerun()
 
+        st.write('---')
+
+        if st.button('🔙 Go back', use_container_width=True):
+            st.session_state.navigation_step = 'recommender_start'
+            st.session_state.selections['age_group'] = None
+            st.session_state.preferences.pop()
+            st.rerun()
+
     elif st.session_state.navigation_step == 'Q2_complete':
-        works_filtered = st.session_state.works_filtered
+        works_filtered = works.copy()
 
         st.write('Which era of books do you want to explore?')
         
@@ -207,44 +259,58 @@ if page == '📚 Book Recommender':
 
         with col1:
             if st.button('🕰️ Older literature', help='Books released before 1900', use_container_width=True):
-                st.session_state.works_filtered = works_filtered[works_filtered['original_publication_year'] < 1900]
+                st.session_state.selections['era'] = 'older'
+                st.session_state.preferences.append(set(works_filtered[works_filtered['original_publication_year'] < 1900]['work_id'].unique()))
                 st.session_state.navigation_step = 'text_input'
                 st.rerun()
 
             if st.button('🕓 Modern releases', help='Books released between 2000-2009', use_container_width=True):
-                st.session_state.works_filtered = works_filtered[(works_filtered['original_publication_year'] >= 2000) & (works_filtered['original_publication_year'] <= 2009)]
+                st.session_state.selections['era'] = 'modern'
+                st.session_state.preferences.append(set(works_filtered[(works_filtered['original_publication_year'] >= 2000) & (works_filtered['original_publication_year'] <= 2009)]['work_id'].unique()))
                 st.session_state.navigation_step = 'text_input'
                 st.rerun()
 
         with col2:
             if st.button('🕗 Classic reads', help='Books released between 1900-1999', use_container_width=True):
-                st.session_state.works_filtered = works_filtered[(works_filtered['original_publication_year'] >= 1900) & (works_filtered['original_publication_year'] <= 1999)]
+                st.session_state.selections['era'] = 'classic'
+                st.session_state.preferences.append(set(works_filtered[(works_filtered['original_publication_year'] >= 1900) & (works_filtered['original_publication_year'] <= 1999)]['work_id'].unique()))
                 st.session_state.navigation_step = 'text_input'
                 st.rerun()
 
             if st.button('🕒 Most recent releases', help='Books released 2010 onwards', use_container_width=True):
-                st.session_state.works_filtered = works_filtered[works_filtered['original_publication_year'] >= 2010]
+                st.session_state.selections['era'] = 'recent'
+                st.session_state.preferences.append(set(works_filtered[works_filtered['original_publication_year'] >= 2010]['work_id'].unique()))
                 st.session_state.navigation_step = 'text_input'
                 st.rerun()
 
         if st.button("❔ I'm okay with anything!", use_container_width=True):
+            st.session_state.preferences.append(set(works_filtered['work_id'].unique()))
             st.session_state.navigation_step = 'text_input'
             st.rerun()
 
+        st.write('---')
+
+        if st.button('🔙 Go back', use_container_width=True):
+            st.session_state.navigation_step = 'Q1_complete'
+            st.session_state.selections['genre'] = None
+            st.session_state.preferences.pop()
+            st.rerun()
+
     elif st.session_state.navigation_step == 'text_input':
-        works_filtered = st.session_state.works_filtered
+        works_filtered = works[works['work_id'].isin(list(set.intersection(*st.session_state.preferences)))]
+        st.session_state.works_filtered = works_filtered
         # st.dataframe(works_filtered)
         
         st.write('Finally, tell us more about what you are most interested in!')
         
         text_input = st.text_input(
             'User input',
-            placeholder="(Optional) Tell us briefly about what you want to read most (e.g. a heroic epic).",
+            placeholder="(Optional) e.g. a heroic epic.",
             max_chars=100,
             label_visibility='collapsed'
         )
 
-        if st.button("Recommend me some books!", use_container_width=True):
+        if st.button("Recommend me some books!", type='primary', use_container_width=True):
             if len(text_input) > 0:
                 book_vectors = st.session_state.vectorizer.transform(works_filtered['description'])
                 st.session_state.recommendations += recommend_books(
@@ -262,10 +328,37 @@ if page == '📚 Book Recommender':
             st.session_state.navigation_step = 'show_recommendations'
             st.rerun()
 
+        st.write('---')
+
+        if st.button('🔙 Go back', use_container_width=True):
+            if st.session_state.selections['age_group'] in ['children', 'teen']:
+                st.session_state.navigation_step = 'Q1_complete'
+                st.session_state.selections['genre'] = None
+
+            else:
+                st.session_state.navigation_step = 'Q2_complete'
+                st.session_state.selections['era'] = None
+            
+            st.session_state.preferences.pop()
+            st.rerun()
+
     if st.session_state.navigation_step == 'show_recommendations':
         st.write('Here are your recommendations!')
         # st.write(st.session_state.recommendations)
         st.markdown('---')
+
+        st.markdown("""
+        <style>
+        .clamp {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;   /* limit to 2 lines */
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: normal;
+        }
+        </style>
+        """, unsafe_allow_html=True)
         
         for recommendation in st.session_state.recommendations:
             col1, col2, col3 = st.columns([1, 6, 3])
@@ -285,7 +378,7 @@ if page == '📚 Book Recommender':
                     st.markdown(f"*{recommendation_detail['genres']}*")
                 
                 st.markdown(f"{recommendation_detail['avg_rating']:1}⭐ *({recommendation_detail['ratings_count']:,} ratings)* ⋅ *{recommendation_detail['reviews_count']:,} user reviews*")
-                    
+            
             with col3:
                 if recommendation not in st.session_state.reading_list:
                     if st.button(f'➕ Add to Reading List', key=f'add_recommendation_{recommendation}', use_container_width=True):
@@ -297,12 +390,14 @@ if page == '📚 Book Recommender':
                         st.session_state.reading_list.remove(recommendation)
                         st.rerun()
 
-            # st.markdown(f"> {recommendation_detail['description']}")
+            st.markdown(f"<div class='clamp'>{recommendation_detail['description']}</div>", unsafe_allow_html=True)
             st.markdown('---')
         
         if st.button('🔁 Restart Book Recommender', use_container_width=True):
             st.session_state.navigation_step = None
-            st.session_state.works_filtered = works.copy()
+            del st.session_state.selections
+            del st.session_state.preferences
+            del st.session_state.works_filtered
             st.session_state.recommendations = []
             st.rerun()
 
@@ -341,7 +436,10 @@ if page == '📖 My Reading List':
                         st.markdown(f"#### {reading_list_detail['original_title']}")
                         st.markdown(f"*{reading_list_detail['author']}*")
                         
-                        st.markdown(f"{reading_list_detail['description']}", unsafe_allow_html=True)
+                        description_lines = reading_list_detail['description'].split('\n')
+                        for description_line in description_lines:
+                            st.markdown(f"{description_line}", unsafe_allow_html=True)
+                        
                         st.markdown(' '.join([f":blue-background[*{genre}*]" for genre in reading_list_detail['genres'].split(', ')]))
 
                     with col5:
